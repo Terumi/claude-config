@@ -1,6 +1,6 @@
 {
   "name": "project-progress",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Progress bar above the prompt from PROGRESS.md, and /todo to add, tick, drop or remove steps",
   "types": "./types/index.d.ts",
   "author": {
