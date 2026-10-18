@@ -23,7 +23,20 @@ describe('progress.ts', () => {
   test('parses steps, name and summary', () => {
     const doc = P.parse(SAMPLE, 'x')
     expect(doc.name).toBe('Invoicing Portal')
-    expect(P.summarize(doc)).toEqual({ name: 'Invoicing Portal', done: 1, total: 3, next: 'PDF export' })
+    expect(P.summarize(doc)).toEqual({
+      name: 'Invoicing Portal',
+      done: 1,
+      total: 3,
+      current: 'PDF export',
+      next: 'Deploy',
+    })
+  })
+
+  test('starting a step sends the other in-progress step back to to-do', () => {
+    const out = P.setStatus(P.parse(SAMPLE, 'x'), 3, 'doing')
+    expect(out.includes('- [ ] PDF export')).toBe(true)
+    expect(out.includes('- [~] Deploy')).toBe(true)
+    expect(out.includes('- Next step: Deploy')).toBe(true)
   })
 
   test('add keeps CRLF and updates the Progress line', () => {

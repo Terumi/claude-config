@@ -3,7 +3,13 @@
 export type Status = 'todo' | 'doing' | 'done'
 export type Step = { line: number; status: Status; text: string }
 export type Doc = { lines: string[]; eol: string; name: string; steps: Step[] }
-export type Summary = { name: string; done: number; total: number; next: string | null }
+export type Summary = {
+  name: string
+  done: number
+  total: number
+  current: string | null
+  next: string | null
+}
 
 const STEP = /^(\s*[-*]\s+)\[( |x|X|~)\]\s+(.*)$/
 const OUT_OF_SCOPE = /^#{1,6}\s+out of scope\b/i
@@ -32,19 +38,26 @@ export const parse = (text: string, fallbackName: string): Doc => {
 
 export const summarize = (doc: Doc): Summary => {
   const done = doc.steps.filter(s => s.status === 'done').length
-  const next =
-    doc.steps.find(s => s.status === 'doing') ?? doc.steps.find(s => s.status === 'todo')
-  return { name: doc.name, done, total: doc.steps.length, next: next ? next.text : null }
+  const current = doc.steps.find(s => s.status === 'doing')
+  const next = doc.steps.find(s => s.status === 'todo')
+  return {
+    name: doc.name,
+    done,
+    total: doc.steps.length,
+    current: current ? current.text : null,
+    next: next ? next.text : null,
+  }
 }
 
 // Keeps the "Progress: X/Y" and "Next step:" lines in step with the checklist.
+// "Next step" names the step being worked on, or the next to-do when none is in progress.
 const refreshLines = (lines: string[]): string[] => {
   const doc = parse(lines.join('\n'), '')
   const s = summarize(doc)
   return lines.map(l => {
     if (/^\s*[-*]?\s*\**progress\**\s*:/i.test(l)) return l.replace(/\d+\s*\/\s*\d+/, `${s.done}/${s.total}`)
     const m = /^(\s*[-*]?\s*\**next step\**\s*:\s*\**\s*)/i.exec(l)
-    if (m) return m[1] + (s.next ?? 'all steps done')
+    if (m) return m[1] + (s.current ?? s.next ?? 'all steps done')
     return l
   })
 }
@@ -62,9 +75,17 @@ const stepAt = (doc: Doc, n: number): Step => {
 const stepLine = (prefix: string, status: Status, text: string) =>
   `${prefix}[${MARK[status]}] ${text}`
 
+// Only one step is in progress at a time: starting one sends any other back to to-do.
 export const setStatus = (doc: Doc, n: number, status: Status): string => {
   const step = stepAt(doc, n)
   const lines = [...doc.lines]
+  if (status === 'doing') {
+    for (const other of doc.steps) {
+      if (other === step || other.status !== 'doing') continue
+      const prefix = STEP.exec(lines[other.line]!)![1]!
+      lines[other.line] = stepLine(prefix, 'todo', other.text)
+    }
+  }
   const m = STEP.exec(lines[step.line]!)!
   lines[step.line] = stepLine(m[1]!, status, m[3]!)
   return done(doc, lines)

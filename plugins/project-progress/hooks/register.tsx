@@ -11,7 +11,7 @@ const HELP = [
   'Usage:',
   '  /todo                    show the steps',
   '  /todo add <text>         add a new step at the end',
-  '  /todo start <n>          mark step n in progress   [~]',
+  '  /todo start <n>          make step n the one in progress [~] (or /todo next <n>)',
   '  /todo done <n>           mark step n done          [x]',
   '  /todo undo <n>           mark step n to do again   [ ]',
   '  /todo rename <n> <text>  change the wording of step n',
@@ -58,6 +58,21 @@ export const register: Register = on => {
     return result
   })
 
+  // Tells Claude where the project stands on each request, so its first reply can report it.
+  on('prompt.compose', async ($, e, next) => {
+    const result = await next(e)
+    const doc = await load($)
+    if (!doc || doc.steps.length === 0) return result
+    const s = P.summarize(doc)
+    const text = [
+      `Project progress (${FILE}): ${s.done}/${s.total} steps done.`,
+      `Step in progress: ${s.current ?? 'none (no step is marked [~])'}.`,
+      `Next to do: ${s.next ?? 'none'}.`,
+      `In your reply to the person's first message of this session, open with a 2-3 line report of that: where the project stands and what is next. Keep working on the step in progress unless they say otherwise, and tick steps in ${FILE} as they finish.`,
+    ].join('\n')
+    return { sections: [...result.sections, { id: 'project-progress:status', text, scope: 'session' }] }
+  })
+
   on('command.run', { command: 'todo' }, async ($, e) => {
     const doc = await load($)
     if (!doc) {
@@ -84,6 +99,7 @@ export const register: Register = on => {
           did = `added "${all}"`
           break
         case 'start':
+        case 'next':
           text = P.setStatus(doc, n, 'doing')
           did = `marked step ${n} in progress`
           break
@@ -137,13 +153,16 @@ export const register: Register = on => {
     if (e.props.hasSurvey || s === null || s.total === 0) return next(e)
 
     const { Box, Text } = $.ui.resolve(e)
-    const nextStep = s.next ? (s.next.length > 50 ? `${s.next.slice(0, 49)}…` : s.next) : 'all done'
+    const clip = (t: string) => (t.length > 40 ? `${t.slice(0, 39)}…` : t)
 
     return (
       <Box>
         <Text bold>{s.name}  </Text>
         <Text>{P.bar(s.done, s.total)} {s.done}/{s.total}</Text>
-        <Text dimColor>  ·  Next: {nextStep}  ·  /todo to edit</Text>
+        <Text dimColor>
+          {s.current ? `  ·  Now: ${clip(s.current)}` : ''}
+          {`  ·  Next: ${s.next ? clip(s.next) : 'all done'}  ·  /todo to edit`}
+        </Text>
       </Box>
     )
   })
