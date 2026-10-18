@@ -33,7 +33,7 @@ describe('progress.ts', () => {
   })
 
   test('starting a step sends the other in-progress step back to to-do', () => {
-    const out = P.setStatus(P.parse(SAMPLE, 'x'), 3, 'doing')
+    const out = P.setStatus(P.parse(SAMPLE, 'x'), '3', 'doing')
     expect(out.includes('- [ ] PDF export')).toBe(true)
     expect(out.includes('- [~] Deploy')).toBe(true)
     expect(out.includes('- Next step: Deploy')).toBe(true)
@@ -47,31 +47,79 @@ describe('progress.ts', () => {
   })
 
   test('done updates Next step', () => {
-    const out = P.setStatus(P.parse(SAMPLE, 'x'), 2, 'done')
+    const out = P.setStatus(P.parse(SAMPLE, 'x'), '2', 'done')
     expect(out.includes('- [x] PDF export')).toBe(true)
     expect(out.includes('- Next step: Deploy')).toBe(true)
     expect(out.includes('- Progress: 2/3 steps')).toBe(true)
   })
 
   test('drop moves the step to Out of scope, which no longer counts', () => {
-    const out = P.drop(P.parse(SAMPLE, 'x'), 3, '2026-10-18')
+    const out = P.drop(P.parse(SAMPLE, 'x'), '3', '2026-10-18')
     expect(out.endsWith('## Out of scope\r\n- Deploy (dropped 2026-10-18)')).toBe(true)
     const again = P.parse(out, 'x')
     expect(P.summarize(again).total).toBe(2)
-    const out2 = P.drop(again, 2, '2026-10-19')
+    const out2 = P.drop(again, '2', '2026-10-19')
     expect(out2.endsWith('- Deploy (dropped 2026-10-18)\r\n- PDF export (dropped 2026-10-19)')).toBe(true)
   })
 
   test('remove, rename and move', () => {
     const doc = P.parse(SAMPLE, 'x')
-    expect(P.remove(doc, 1).includes('Auth module')).toBe(false)
-    expect(P.rename(doc, 3, 'Deploy to prod').includes('- [ ] Deploy to prod')).toBe(true)
-    const moved = P.parse(P.move(doc, 3, 1), 'x')
+    expect(P.remove(doc, '1').includes('Auth module')).toBe(false)
+    expect(P.rename(doc, '3', 'Deploy to prod').includes('- [ ] Deploy to prod')).toBe(true)
+    const moved = P.parse(P.move(doc, '3', 1), 'x')
     expect(moved.steps.map(s => s.text)).toEqual(['Deploy', 'Auth module', 'PDF export'])
   })
 
   test('bad step number explains the range', () => {
-    expect(() => P.setStatus(P.parse(SAMPLE, 'x'), 9, 'done')).toThrow('Steps go from 1 to 3')
+    expect(() => P.setStatus(P.parse(SAMPLE, 'x'), '9', 'done')).toThrow('Steps go from 1 to 3')
+  })
+})
+
+const NESTED = [
+  '# Shop',
+  '- [ ] Checkout',
+  '  - [x] Cart',
+  '  - [ ] Payment',
+  '- [ ] Emails',
+].join('\n')
+
+describe('sub-steps', () => {
+  test('a to-do with sub-steps counts its sub-steps, not itself', () => {
+    expect(P.summarize(P.parse(NESTED, 'x'))).toEqual({
+      name: 'Shop',
+      done: 1,
+      total: 3,
+      current: null,
+      next: 'Payment',
+    })
+  })
+
+  test('done on the to-do finishes all its sub-steps; start on a sub-step marks the to-do in progress', () => {
+    const doc = P.parse(NESTED, 'x')
+    expect(P.setStatus(doc, '1', 'done').includes('  - [x] Payment')).toBe(true)
+    const started = P.setStatus(doc, '1.2', 'doing')
+    expect(started.includes('- [~] Checkout')).toBe(true)
+    expect(started.includes('  - [~] Payment')).toBe(true)
+  })
+
+  test('starting a to-do that has sub-steps is refused', () => {
+    expect(() => P.setStatus(P.parse(NESTED, 'x'), '1', 'doing')).toThrow('Start one of them instead')
+  })
+
+  test('setChildren replaces the sub-steps with new to-do rows', () => {
+    const out = P.setChildren(P.parse(NESTED, 'x'), 0, ['Card', 'Bank'])
+    expect(out.includes('- [ ] Checkout\n  - [ ] Card\n  - [ ] Bank\n- [ ] Emails')).toBe(true)
+    expect(out.includes('Cart')).toBe(false)
+  })
+
+  test('removing a to-do removes its sub-steps', () => {
+    const out = P.remove(P.parse(NESTED, 'x'), '1')
+    expect(out.includes('Cart')).toBe(false)
+    expect(P.parse(out, 'x').steps.map(s => s.text)).toEqual(['Emails'])
+  })
+
+  test('an unknown sub-step names the count', () => {
+    expect(() => P.resolve(P.parse(NESTED, 'x'), '1.9')).toThrow('Step 1 has 2 sub-steps')
   })
 })
 
