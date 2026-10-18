@@ -6,7 +6,7 @@ import * as P from './progress'
 
 const SAMPLE = [
   '# Invoicing Portal',
-  '- Repo: github.com/microbase/invoicing',
+  '- Repo: github.com/example/invoicing',
   '- Progress: 1/3 steps',
   '- Next step: PDF export',
   '',
