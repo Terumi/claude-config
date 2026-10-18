@@ -1,0 +1,11 @@
+{
+  "name": "tasos-claude-config",
+  "owner": { "name": "Tasos Protopapas" },
+  "plugins": [
+    {
+      "name": "project-progress",
+      "source": "./plugins/project-progress",
+      "description": "Progress bar above the prompt from PROGRESS.md, and /todo to add, tick, drop or remove steps"
+    }
+  ]
+}
